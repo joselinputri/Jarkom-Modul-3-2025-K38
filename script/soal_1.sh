@@ -142,11 +142,11 @@ echo "nameserver 192.168.122.1" > /etc/resolv.conf
 4. Amdir (DNS Slave)
 ```
 # 1. Atur IP address
-ip addr add 192.230.4.2/24 dev eth0
+ip addr add 192.230.3.3/24 dev eth0
 # 2. Nyalakan interface
 ip link set eth0 up
 # 3. Atur gateway
-ip route add default via 192.230.4.1
+ip route add default via 192.230.3.1
 ```
 ```
 nano /etc/network/interfaces
@@ -154,9 +154,9 @@ nano /etc/network/interfaces
 ```
 auto eth0
 iface eth0 inet static
-    address 192.230.4.2
+    address 192.230.3.3
     netmask 255.255.255.0
-    gateway 192.230.4.1
+    gateway 192.230.3.1
 ```
 ```
 echo "nameserver 192.168.122.1" > /etc/resolv.conf
