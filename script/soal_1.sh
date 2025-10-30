@@ -230,7 +230,7 @@ echo "nameserver 192.168.122.1" > /etc/resolv.conf
 8. Pharazon (Load Balancer PHP)
 ```
 # 1. Atur IP address
-ip addr add 192.230.2.7/24 dev eth0
+ip addr add 192.230.2.6/24 dev eth0
 # 2. Nyalakan interface
 ip link set eth0 up
 # 3. Atur gateway
@@ -242,7 +242,7 @@ nano /etc/network/interfaces
 ```
 auto eth0
 iface eth0 inet static
-    address 192.230.2.7
+    address 192.230.2.6
     netmask 255.255.255.0
     gateway 192.230.2.1
 ```
@@ -326,6 +326,28 @@ echo "nameserver 192.168.122.1" > /etc/resolv.conf
 12. Galadriel (PHP Worker-1)
 ```
 # 1. Atur IP address
+ip addr add 192.230.2.2/24 dev eth0
+# 2. Nyalakan interface
+ip link set eth0 up
+# 3. Atur gateway
+ip route add default via 192.230.2.1
+```
+```
+nano /etc/network/interfaces
+```
+```
+auto eth0
+iface eth0 inet static
+    address 192.230.2.2
+    netmask 255.255.255.0
+    gateway 192.230.2.1
+```
+```
+echo "nameserver 192.168.122.1" > /etc/resolv.conf
+```
+13. Celeborn (PHP Worker-2)
+```
+# 1. Atur IP address
 ip addr add 192.230.2.3/24 dev eth0
 # 2. Nyalakan interface
 ip link set eth0 up
@@ -345,7 +367,7 @@ iface eth0 inet static
 ```
 echo "nameserver 192.168.122.1" > /etc/resolv.conf
 ```
-13. Celeborn (PHP Worker-2)
+14. Oropher (PHP Worker-3)
 ```
 # 1. Atur IP address
 ip addr add 192.230.2.4/24 dev eth0
@@ -361,28 +383,6 @@ nano /etc/network/interfaces
 auto eth0
 iface eth0 inet static
     address 192.230.2.4
-    netmask 255.255.255.0
-    gateway 192.230.2.1
-```
-```
-echo "nameserver 192.168.122.1" > /etc/resolv.conf
-```
-14. Oropher (PHP Worker-3)
-```
-# 1. Atur IP address
-ip addr add 192.230.2.5/24 dev eth0
-# 2. Nyalakan interface
-ip link set eth0 up
-# 3. Atur gateway
-ip route add default via 192.230.2.1
-```
-```
-nano /etc/network/interfaces
-```
-```
-auto eth0
-iface eth0 inet static
-    address 192.230.2.5
     netmask 255.255.255.0
     gateway 192.230.2.1
 ```
@@ -414,7 +414,7 @@ echo "nameserver 192.168.122.1" > /etc/resolv.conf
 16. Celebrimbor (Client-Static-2)
 ```
 # 1. Atur IP address
-ip addr add 192.230.2.2/24 dev eth0
+ip addr add 192.230.2.5/24 dev eth0
 # 2. Nyalakan interface
 ip link set eth0 up
 # 3. Atur gateway
@@ -426,7 +426,7 @@ nano /etc/network/interfaces
 ```
 auto eth0
 iface eth0 inet static
-    address 192.230.2.2
+    address 192.230.2.5
     netmask 255.255.255.0
     gateway 192.230.2.1
 ```
