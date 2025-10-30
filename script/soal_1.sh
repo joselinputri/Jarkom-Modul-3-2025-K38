@@ -230,11 +230,11 @@ echo "nameserver 192.168.122.1" > /etc/resolv.conf
 8. Pharazon (Load Balancer PHP)
 ```
 # 1. Atur IP address
-ip addr add 192.230.4.6/24 dev eth0
+ip addr add 192.230.2.7/24 dev eth0
 # 2. Nyalakan interface
 ip link set eth0 up
 # 3. Atur gateway
-ip route add default via 192.230.4.1
+ip route add default via 192.230.2.1
 ```
 ```
 nano /etc/network/interfaces
@@ -242,9 +242,9 @@ nano /etc/network/interfaces
 ```
 auto eth0
 iface eth0 inet static
-    address 192.230.4.6
+    address 192.230.2.7
     netmask 255.255.255.0
-    gateway 192.230.4.1
+    gateway 192.230.2.1
 ```
 ```
 echo "nameserver 192.168.122.1" > /etc/resolv.conf
