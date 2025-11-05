@@ -926,9 +926,6 @@ dig google.com
 
 
 
-# Jarkom-Modul-3-2025-K38
-
-
 # Soal 12: Setup PHP Worker (Galadriel, Celeborn, Oropher)
 ## Deskripsi
 Para Penguasa Peri membangun taman digital menggunakan PHP. Install nginx dan php8.4-fpm di setiap node worker PHP, buat index.php yang menampilkan hostname, dan akses hanya via domain name.
@@ -1022,7 +1019,7 @@ lynx http://oropher
 
 ```bash
 Halo, saya Galadriel di IP 10.15.3.4!
-```bash
+```
 
 foto no 12
 
@@ -1057,7 +1054,7 @@ Menggunakan init.d karena systemctl mungkin tidak tersedia di container
 ```bash 
 mkdir -p /var/www/html
 echo "<?php echo 'Halo dari Galadriel'; ?>" > /var/www/html/index.php
-```bash 
+```
 File PHP sederhana untuk identifikasi worker
 
 
@@ -1084,7 +1081,8 @@ server {
     }
 }
 EOF
-```bash 
+```
+
 ```bash 
 listen 8004: Port khusus Galadriel
 server_name galadriel.k38.com: Domain specific
@@ -1308,13 +1306,10 @@ lynx -auth=noldor:silvan http://celeborn:8005
 lynx -auth=noldor:silvan http://oropher:8006
 Test tanpa authentication (akan ditolak):
 ```
-#### Output: 401 Unauthorized
-```bash 
-
+#### Output: 401 Unauthorized 
 ### 📊 Expected Output
-
+```bash 
 **Dengan Auth:**
-```
 Halo dari Galadriel
 Tanpa Auth:
 html
