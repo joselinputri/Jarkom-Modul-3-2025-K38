@@ -1020,9 +1020,16 @@ lynx http://oropher
 ```bash
 Halo, saya Galadriel di IP 10.15.3.4!
 ```
+
 ![12 (1)](assets/12%20(1).png)
 
+
+
+
 ![12 (2)](assets/12%20(2).png)
+
+
+
 
 ![12 (3)](assets/12%20(3).png)
 
@@ -1144,7 +1151,14 @@ lynx http://oropher:8006 || curl http://oropher:8006
 | Celeborn | 8005 | `http://celeborn:8005` | `Halo dari Celeborn` |
 | Oropher | 8006 | `http://oropher:8006` | `Halo dari Oropher` |
 
-foto soal 13
+**Gambar 1**
+![13 (1)](assets/13%20(1).png)
+
+**Gambar 2**
+![13 (2)](assets/13%20(2).png)
+
+**Gambar 3**
+![13 (3)](assets/13%20(3).png)
 
 # Soal 14: Basic HTTP Authentication
 ### 📋 Deskripsi
@@ -1323,8 +1337,14 @@ html
 </body>
 </html>
 ```
+**Gambar 1**
+![14 (1)](assets/14%20(1).png)
 
-foto soal 14
+**Gambar 2**
+![14 (2)](assets/14%20(2).png)
+
+**Gambar 3**
+![14 (3)](assets/14%20(3).png)
 
 # Soal 15: X-Real-IP Header untuk Tracking Pengunjung
 ### 📋 Deskripsi
@@ -1501,7 +1521,14 @@ lynx -auth=noldor:silvan http://oropher:8006
 Halo dari Galadriel!
 Alamat IP pengunjung: 192.230.1.10
 ```
-foto soal 15
+**Gambar 1**
+![15 (1)](assets/15%20(1).png)
+
+**Gambar 2**
+![15 (2)](assets/15%20(2).png)
+
+**Gambar 3**
+![15 (3)](assets/15%20(3).png)
 
 # Soal 16 -Reverse Proxy Pharazon ke Peri Workers
 #### 📋 Deskripsi
@@ -1541,8 +1568,14 @@ Dari client
 Output bervariasi tergantung worker yang aktif, misalnya:
 Halo dari Galadriel!
 
-foto soal 16
+**Gambar 1**
+![16 (1)](assets/16%20(1).png)
 
+**Gambar 2**
+![16 (2)](assets/16%20(2).png)
+
+**Gambar 3**
+![16 (3)](assets/16%20(3).png)
 
 # Soal 17 - Benchmark & Failover Reverse Proxy Pharazon
 
@@ -1616,8 +1649,11 @@ for i in {1..20}; do curl -s -u noldor:silvan http://pharazon/; echo "---"; done
 #### Hasil:
  Galadriel kembali muncul dalam rotasi load balancing — sistem berhasil recovery otomatis.
 
- foto soal no 17 
+**Gambar 1**
+![17 (1)](assets/17%20(1).png)
 
+**Gambar 2**
+![17 (2)](assets/17%20(2).png)
 
 # Soal 18 - Replikasi Database MariaDB (Palantir – Narvi)
 
@@ -1686,6 +1722,7 @@ SHOW TABLES;
 SELECT * FROM test2;
 ```
 📈 Hasil: tabel test2 dan isinya otomatis muncul di Narvi → replikasi berhasil.
-foto soal 18 
 
+**Gambar 1**
+![18 (1)](assets/18%20(1).png)
 
