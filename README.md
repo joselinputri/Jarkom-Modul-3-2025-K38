@@ -1020,8 +1020,11 @@ lynx http://oropher
 ```bash
 Halo, saya Galadriel di IP 10.15.3.4!
 ```
+![12 (1)](assets/12%20(1).png)
 
-foto no 12
+![12 (2)](assets/12%20(2).png)
+
+![12 (3)](assets/12%20(3).png)
 
 
 # Soal 13: Konfigurasi Port PHP Workers
