@@ -898,11 +898,14 @@ iptables -A FORWARD -i eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 Bagian 3: Pengujian (di Klien)
 Pindah ke Gilgalad (atau klien lain).
 Dapatkan IP:
+
 ```
 dhclient -v eth0
 
 ```
+
 Tes Ping (Harus BERHASIL)
+
 ```
 
 ping 8.8.8.8
@@ -910,6 +913,7 @@ ping 8.8.8.8
 ```
 
 Tes DNS (Pembelokan).
+
 ```
 
 cat /etc/resolv.conf
@@ -922,17 +926,676 @@ dig google.com
 
 ```
 
+# Soal 4
 
+```
+# Di terminal Durin
+# Hapus semua aturan pembelokan (PREROUTING)
+iptables -t nat -F PREROUTING
+```
 
+## Konfigurasi Erendis (Master Server)
 
+Di terminal Erendis (192.230.3.2):
+a. Instal BIND9 (Jika Hilang)
+
+```
+apt update
+apt install bind9 dnsutils -y
+```
+
+b. Konfigurasi Opsi (named.conf.options)
+
+```
+nano /etc/bind/named.conf.options
+```
+
+Isi file ini seperti ini:
+
+```
+// Buat daftar izin untuk semua jaringan internal kita
+acl "internal-nets" {
+    192.230.1.0/24;
+    192.230.2.0/24;
+    192.230.3.0/24;
+    192.230.4.0/24;
+    192.230.5.0/24;
+    localhost;
+    localnets;
+};
+
+options {
+    directory "/var/cache/bind";
+
+    // Izinkan query & rekursi dari jaringan internal
+    allow-query { internal-nets; };
+    allow-recursion { internal-nets; };
+    recursion yes;
+
+    // Kirim query yang tidak diketahui ke DNS Google
+    forwarders {
+        8.8.8.8;
+        8.8.4.4;
+    };
+
+    dnssec-validation auto;
+    listen-on { any; };
+    listen-on-v6 { none; }; // Paksa IPv4
+};
+```
+
+c. Daftarkan Peta (Zone) Baru (named.conf.local)
+
+```
+nano /etc/bind/named.conf.local
+```
+
+Tambahkan ini di bagian bawah file:
+
+```
+// Zona utama K38.com
+zone "K38.com" {
+    type master;
+    file "/etc/bind/db.K38.com";  // File peta (zone file) kita
+    allow-transfer { 192.230.4.2; }; // Izinkan Amdir (IP Slave) menyalin
+};
+```
+
+d. Buat File Peta (db.K38.com).
+
+```
+nano /etc/bind/db.K38.com
+```
+
+Isi dengan ini (ganti K38 dan pastikan IP-nya benar):
+
+```
+;
+; BIND data file for K38.com
+;
+$TTL    604800
+@       IN      SOA     ns1.K38.com. root.K38.com. (
+                              1         ; Serial (PENTING!)
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+; === Name Servers (NS Records) ===
+@       IN      NS      ns1.K38.com.
+@       IN      NS      ns2.K38.com.
+
+; === Name Server IPs (A Records) ===
+ns1     IN      A       192.230.3.2     ; IP Erendis (Master)
+ns2     IN      A       192.230.4.2     ; IP Amdir (Slave)
+
+; === Host Records (A Records) ===
+palantir  IN      A       192.230.4.5
+elros     IN      A       192.230.1.5
+pharazon  IN      A       192.230.4.6
+elendil   IN      A       192.230.1.2
+isildur   IN      A       192.230.1.3
+anarion   IN      A       192.230.1.4
+galadriel IN      A       192.230.2.3
+celeborn  IN      A       192.230.2.4
+oropher   IN      A       192.230.2.5
+```
+
+e. Cek & Jalankan
+
+```
+# Cek config
+named-checkconf
+
+# Cek file peta (ganti K38)
+named-checkzone K38.com /etc/bind/db.K38.com
+
+named -g -4
+```
+
+3. Konfigurasi Amdir (Slave Server)
+   Di terminal Amdir (192.230.4.2):
+   a. Instal BIND9 (Jika Hilang)
+
+```
+apt update
+apt install bind9 dnsutils -y
+```
+
+b. Konfigurasi Opsi (named.conf.options).
+c. Daftarkan Peta (Zone).
+
+```
+nano /etc/bind/named.conf.local
+```
+
+Tambahkan ini di bagian bawah file:
+
+```
+// Zona K38.com (disalin dari Master)
+zone "K38.com" {
+    type slave;
+    file "db.K38.com";          // BIND akan otomatis menyimpan salinannya
+    masters { 192.230.3.2; };  // Alamat IP Erendis (Master)
+};
+```
+
+d. Cek & Jalankan
+
+```
+# Cek config
+named-checkconf
+
+# Jalankan (karena kita tahu /etc/init.d/ tidak ada)
+named -g -4
+```
+
+4. Update Klien (via DHCP Aldarion)
+   Di terminal Aldarion (192.230.4.3):
+   a. Edit Konfigurasi DHCP
+
+```
+nano /etc/dhcp/dhcpd.conf
+```
+
+b. Ubah Opsi domain-name-servers Di bagian atas (Opsi Global)
+
+```
+option domain-name-servers 192.230.3.2, 192.230.4.2;
+```
+
+c. Restart DHCP Server
+
+```
+/etc/init.d/isc-dhcp-server restart
+```
+
+5. Verifikasi (di Klien)
+   Pindah ke Gilgalad (atau klien dinamis lainnya).
+   a. Minta IP & DNS Baru
+
+```
+dhclient -v eth0
+```
+
+b. Cek File DNS
+
+```
+cat /etc/resolv.conf
+```
+
+(Outputnya harus nameserver 192.230.3.2 dan nameserver 192.230.4.2).
+
+c. Tes dig
+
+```
+# Tes internal (ganti K38)
+dig elendil.K38.com
+
+# Tes eksternal (rekursif)
+dig google.com
+```
+
+# Soal 5
+
+1. Node Erendis: Update Peta Utama (Forward Zone)
+   Ini untuk menambah CNAME (www) dan TXT (pesan rahasia).
+   a. Hentikan Server named Di terminal Erendis, tekan Ctrl + C untuk menghentikan named -g -4 yang lagi jalan.
+   b. Edit File Peta (db.K38.com)
+
+```
+nano /etc/bind/db.K38.com
+```
+
+c. Lakukan 3 Perubahan (SERIAL, CNAME, TXT) File-mu akan terlihat seperti ini (lihat bagian SERIAL dan 2 blok tambahan di bawah):
+
+```
+;
+; BIND data file for K38.com
+;
+$TTL    604800
+@       IN      SOA     ns1.K38.com. root.K38.com. (
+                              2         ; Serial (NAIKKAN JADI 2!)
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+; === Name Servers (NS Records) ===
+@       IN      NS      ns1.K38.com.
+@       IN      NS      ns2.K38.com.
+
+; === Alias (CNAME) ===
+www     IN      CNAME   @
+
+; === Name Server IPs (A Records) ===
+ns1     IN      A       192.230.3.2     ; IP Erendis (Master)
+ns2     IN      A       192.230.4.2     ; IP Amdir (Slave)
+
+; === Host Records (A Records) ===
+palantir  IN      A       192.230.4.5
+elros     IN      A       192.230.1.5
+pharazon  IN      A       192.230.4.6
+elendil   IN      A       192.230.1.2
+isildur   IN      A       192.230.1.3
+anarion   IN      A       192.230.1.4
+galadriel IN      A       192.230.2.3
+celeborn  IN      A       192.230.2.4
+oropher   IN      A       192.230.2.5
+
+; === Pesan Rahasia (TXT) ===
+elros     IN      TXT     "Cincin Sauron"
+pharazon  IN      TXT     "Aliansi Terakhir"
+```
+
+2. 📍 Node Erendis: Buat Peta Terbalik (Reverse Zone / PTR)
+   Ini untuk melacak IP Erendis (...3.2) dan Amdir (...4.2)
+   a. Daftarkan Reverse Zone Buka file konfigurasi utama BIND:
+
+```
+nano /etc/bind/named.conf.local
+```
+
+Tambahkan 2 blok zone baru ini di bagian bawah (ini untuk jaringan 192.230.3.x dan 192.230.4.x):
+
+```
+// Reverse zone untuk jaringan Erendis (192.230.3.x)
+zone "3.230.192.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.192.230.3";
+};
+
+// Reverse zone untuk jaringan Amdir (192.230.4.x)
+zone "4.230.192.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.192.230.4";
+};
+```
+
+b. Buat File Peta Terbalik Kita perlu membuat 2 file baru yang kita daftarkan di atas.
+File untuk Jaringan Erendis (...3.x)
+
+```
+nano /etc/bind/db.192.230.3
+```
+
+Isi dengan ini (PTR record 2 menunjuk ke IP .2 yaitu Erendis):
+
+```
+$TTL    604800
+@       IN      SOA     ns1.K38.com. root.K38.com. (
+                              1         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      ns1.K38.com.
+;
+; === PTR Records ===
+2       IN      PTR     ns1.K38.com. ; (192.230.3.2)
+```
+
+File untuk Jaringan Amdir (...4.x)
+
+```
+nano /etc/bind/db.192.230.4
+```
+
+Isi dengan ini (PTR record 2 menunjuk ke IP .2 yaitu Amdir):
+
+```
+$TTL    604800
+@       IN      SOA     ns1.K38.com. root.K38.com. (
+                              1         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      ns1.K38.com.
+;
+; === PTR Records ===
+2       IN      PTR     ns2.K38.com. ; (192.230.4.2)
+```
+
+3. Node Erendis: Cek & Jalankan Ulang
+   a. Cek Semua Konfigurasi:
+
+```
+# Cek config utama
+named-checkconf
+
+# Cek peta utama (forward)
+named-checkzone K38.com /etc/bind/db.K38.com
+
+# Cek peta terbalik (reverse)
+named-checkzone 3.230.192.in-addr.arpa /etc/bind/db.192.230.3
+named-checkzone 4.230.192.in-addr.arpa /etc/bind/db.192.230.4
+```
+
+(Pastikan semuanya OK).
+b. Jalankan Ulang Server:
+
+```
+named -g -4
+```
+
+4. 📍 Node Gilgalad: Verifikasi
+   Sekarang pindah ke terminal klien (seperti Gilgalad).
+   a. Tes CNAME (Alias www):
+
+```
+dig www.K38.com
+```
+
+b. Tes TXT (Pesan Rahasia):
+
+```
+dig elros.K38.com TXT
+```
+
+c. Tes PTR (Peta Terbalik):
+
+```
+# Tes IP Erendis
+dig -x 192.230.3.2
+
+# Tes IP Amdir
+dig -x 192.230.4.2
+```
+
+# Soal 6
+
+Konfigurasi di Aldarion
+Di terminal Aldarion (192.230.4.3):
+
+1. Edit File dhcpd.conf
+
+```
+nano /etc/dhcp/dhcpd.conf
+```
+
+2. Lakukan 3 Perubahan
+   A. Ubah max-lease-time (Global): Di bagian atas file (Opsi Global), cari max-lease-time dan ubah nilainya menjadi 3600.
+
+```
+# --- Opsi Global ---
+...
+default-lease-time 600;  # Biarkan ini atau hapus
+max-lease-time 3600;     # <-- UBAH INI (dari 7200)
+...
+```
+
+B. Tambahkan Waktu di Subnet Manusia (Jaringan 1): Cari blok subnet 192.230.1.0 dan tambahkan default-lease-time 1800; di dalamnya.
+
+```
+# --- Jaringan 1: Keluarga Manusia (via Durin eth1) ---
+subnet 192.230.1.0 netmask 255.255.255.0 {
+    option routers 192.230.1.1;
+    default-lease-time 1800; # <-- TAMBAHKAN INI (1800 detik)
+
+    # Rentang 1
+    range 192.230.1.6 192.230.1.34;
+    # Rentang 2
+    range 192.230.1.68 192.230.1.94;
+}
+```
+
+C. Tambahkan Waktu di Subnet Peri (Jaringan 2): Cari blok subnet 192.230.2.0 dan tambahkan default-lease-time 600;.
+
+```
+# --- Jaringan 2: Keluarga Peri (via Durin eth2) ---
+subnet 192.230.2.0 netmask 255.255.255.0 {
+    option routers 192.230.2.1;
+    default-lease-time 600; # <-- TAMBAHKAN INI (600 detik)
+
+    # Rentang 1
+    range 192.230.2.35 192.230.2.67;
+    # Rentang 2
+    range 192.230.2.96 192.230.2.121;
+}
+```
+
+3. Restart DHCP Server
+   Agar konfigurasi baru terbaca, restart layanannya (ingat, di image kamu, kita pakai /etc/init.d/):
+
+```
+/etc/init.d/isc-dhcp-server restart
+```
+
+# Soal 7
+
+Bagian 1: Instalasi Tools (Di 3 Ksatria)
+Lakukan langkah-langkah ini di terminal Elendil, Isildur, DAN Anarion.
+1.1. Instal Nginx, Composer, dan PHP
+
+```
+# 1. Update daftar paket
+apt update
+
+# 2. Instal Nginx, Composer, Git, dan PHP 8.4
+# (Kita tambahkan php8.4-cli & ekstensi umum Laravel)
+apt install nginx curl composer git php8.4-fpm php8.4-cli php8.4-mysql php8.4-mbstring php8.4-xml php8.4-curl php8.4-zip -y
+```
+
+1.2. Dapatkan Cetak Biru (Source Code)
+
+```
+# 1. Buat folder untuk web-nya
+mkdir -p /var/www/benteng
+
+# 2. Clone resource-nya (ganti <URL_GIT> dengan URL resource kamu)
+git clone https://github.com/elshiraphine/laravel-simple-rest-api /var/www/benteng
+
+# 3. Masuk ke folder & install dependensi Laravel
+cd /var/www/benteng
+composer install --no-dev
+composer update
+```
+
+(Pastikan kamu lakukan ini di ketiga node Ksatria).
+Bagian 2: Instalasi Lynx (Di Klien)
+Sekarang pindah ke satu node Klien (misal Gilgalad atau Miriel) untuk menginstal lynx.
+
+```
+# Di terminal Gilgalad
+apt update
+apt install lynx -y
+```
+
+Bagian 3: Cek dengan Lynx
+Ini adalah bagian testing dari soal. Kalau kamu coba sekarang:
+
+```
+# Di terminal Gilgalad
+lynx elendil.K38.com
+```
+
+Hasilnya PASTI GAGAL atau akan nampilin halaman "Welcome to Nginx" (default).
+Kenapa? Kita baru install Nginx, tapi kita belum mengkonfigurasi "benteng"-nya (Nginx server block) untuk menjalankan aplikasi Laravel di /var/www/benteng.
+
+# Soal 8
+
+Konfigurasi .env & Database
+Langkah ini dilakuin di semua 3 worker (Elendil, Isildur, Anarion).
+
+1. Masuk ke Direktori Benteng:
+
+```
+cd /var/www/benteng
+```
+
+2. Salin File .env & Buat Kunci:
+   ```
+
+   ```
+
+# Salin dari file contoh
+
+cp .env.example .env
+
+# Generate kunci aplikasi Laravel
+
+php artisan key:generate
+
+```
+
+##Buat Database
+
+```
+
+apt update
+apt install mariadb-server
+
+```
+#Start Service MariaDB
+```
+
+/etc/init.d/mariadb start
+
+```
+# Cek Status
+```
+
+/etc/init.d/mariadb status
+
+```
+#Masuk ke MySQL
+```
+
+mysql
+
+```
+#Didalam mysql, buat database
+-- 1. Buat database-nya
+CREATE DATABASE db_benteng;
+
+-- 2. Buat user-nya (pakai '%' biar bisa diakses dari Elendil dkk.)
+CREATE USER 'user_benteng'@'%' IDENTIFIED BY 'jarkom_menyenangkan';
+
+-- 3. Kasih user itu izin ke database baru
+GRANT ALL PRIVILEGES ON db_benteng.* TO 'user_benteng'@'%';
+
+-- 4. Terapkan perubahan
+FLUSH PRIVILEGES;
+
+-- 5. Keluar dari MariaDB
+EXIT;
+```
+
+##konfigurasi di palantir (perizinan koneksi)
+
+```
+# Di terminal Palantir
+nano /etc/mysql/mariadb.conf.d/50-server.cnf
+```
+
+Cari baris bind-address: Kamu akan lihat ini:
+
+```
+bind-address            = 0.0.0.0#ubah ini
+```
+
+(127.0.0.1 artinya "cuma dengerin localhost").
+#restart
+
+```
+/etc/init.d/mariadb restart
+```
+
+3. Edit File .env: Buka editor-nya:
+
+```
+nano .env
+```
+
+Cari bagian DB_CONNECTION dan ubah biar konek ke Palantir (IP: 192.230.4.5):
+DB_CONNECTION=mysql
+DB_HOST=192.230.4.5
+DB_PORT=3306
+DB_DATABASE=db_benteng # (Ganti ini)
+DB_USERNAME=user_benteng # (Ganti ini)
+DB_PASSWORD=jarkom_menyenangkan # (Ganti ini)
+
+(Pastikan kamu udah bikin database dan user-nya di node Palantir ya, bro).
+8.3. Konfigurasi Nginx (Gerbang Unik)
+Ini yang krusial. Tiap Ksatria punya gerbang (port) dan domain-nya sendiri.
+A. Di Elendil (Port 8001)
+
+1. Buka file konfigurasi Nginx:
+
+```
+nano /etc/nginx/sites-available/default
+```
+
+2.  Hapus semua isinya dan ganti dengan ini (ganti K38):
+
+```
+server {
+    # Gerbang unik Elendil
+    listen 8001;
+
+    # Hanya jawab domain ini
+    server_name elendil.K38.com;
+    root /var/www/benteng/public;
+
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        # Arahkan ke socket PHP 8.4
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
+    }
+}
+```
+
+B. Di Isildur (Port 8002)
+Buka file: nano /etc/nginx/sites-available/default
+Hapus semua isinya, ganti dengan config yang sama persis kayak Elendil, tapi UBAH 2 BARIS INI:
+
+```
+listen 8002; # Gerbang Isildur
+    server_name isildur.K38.com;
+```
+
+C. Di Anarion (Port 8003)
+Buka file: nano /etc/nginx/sites-available/default
+Hapus semua isinya, ganti dengan config yang sama persis kayak Elendil, tapi UBAH 2 BARIS INI:
+
+```
+listen 8003; # Gerbang Anarion
+    server_name anarion.K38.com;
+```
+
+8.4. Restart Service
+Terakhir, restart Nginx dan PHP-FPM di semua 3 Ksatria (Elendil, Isildur, Anarion).
+
+```
+# (Jalankan di ketiga Ksatria)
+
+# Restart Nginx
+/etc/init.d/nginx restart
+
+# Restart PHP-FPM
+/etc/init.d/php8.4-fpm restart
+```
 
 # Soal 12: Setup PHP Worker (Galadriel, Celeborn, Oropher)
+
 ## Deskripsi
+
 Para Penguasa Peri membangun taman digital menggunakan PHP. Install nginx dan php8.4-fpm di setiap node worker PHP, buat index.php yang menampilkan hostname, dan akses hanya via domain name.
 
 🔧 Solusi
 Setup Script (setup-php-worker.sh)
+
 ### 1. Inisialisasi & DNS
+
 ```bash
 #!/bin/bash
 NODE_NAME=$(hostname)
@@ -944,6 +1607,7 @@ Fix DNS untuk install package
 ```
 
 ### 2. Install Dependencies
+
 ```bash
 apt-get update -y
 apt-get install -y nginx php php-fpm curl
@@ -952,6 +1616,7 @@ Install php8.4-fpm (PHP processor)
 ```
 
 ### 3. Setup Web Directory
+
 ```bash
 mkdir -p /var/www/html
 chown -R www-data:www-data /var/www/html
@@ -961,13 +1626,16 @@ Set ownership ke user nginx (www-data)
 ```
 
 ### 4. Create index.php
+
 ```bash
 echo "<?php echo 'Halo, saya $NODE_NAME di IP $NODE_IP!'; ?>" > /var/www/html/index.php
 ```
+
 File PHP sederhana menampilkan hostname & IP
 Setiap worker punya output unik
 
 ### 5. Configure Nginx
+
 ```bash
 cat > /etc/nginx/sites-available/default << 'EOF'
 server {
@@ -991,8 +1659,10 @@ server {
 }
 EOF
 ```
+
 ### Penjelasan:
-```bash 
+
+```bash
 listen 80: Port HTTP
 server_name _: Accept all hostnames
 location ~ \.php$: Forward PHP ke PHP-FPM via unix socket
@@ -1000,6 +1670,7 @@ fastcgi_pass unix:/run/php/php8.4-fpm.sock: Communication channel
 ```
 
 ### 6. Restart Services
+
 ```bash
 nginx -t
 service php8.4-fpm restart
@@ -1009,7 +1680,8 @@ Restart PHP-FPM & Nginx
 ```
 
 ### 📝 Testing
-```bash 
+
+```bash
 lynx http://galadriel
 lynx http://celeborn
 lynx http://oropher
@@ -1021,21 +1693,16 @@ lynx http://oropher
 Halo, saya Galadriel di IP 10.15.3.4!
 ```
 
-![12 (1)](assets/12%20(1).png)
+![12 (1)](<assets/12%20(1).png>)
 
+![12 (2)](<assets/12%20(2).png>)
 
-
-
-![12 (2)](assets/12%20(2).png)
-
-
-
-
-![12 (3)](assets/12%20(3).png)
-
+![12 (3)](<assets/12%20(3).png>)
 
 # Soal 13: Konfigurasi Port PHP Workers
+
 ## Deskripsi
+
 Setiap taman Peri harus dapat diakses di port yang berbeda:
 Galadriel: Port 8004
 Celeborn: Port 8005
@@ -1044,32 +1711,38 @@ Oropher: Port 8006
 Konfigurasikan nginx untuk meneruskan request PHP ke php-fpm.
 
 ### Solusi
+
 Script Galadriel (setup-galadriel.sh)
+
 #### 1. Install Dependencies
-```bash 
+
+```bash
 echo "[1/7] Update & Install paket..."
 apt update -y
 apt install -y nginx php8.4-fpm lynx curl
 ```
 
 #### 2. Start Services
-```bash 
+
+```bash
 /etc/init.d/php8.4-fpm start
 /etc/init.d/nginx start
 ```
+
 Menggunakan init.d karena systemctl mungkin tidak tersedia di container
 
-
 #### 3. Create index.php
-```bash 
+
+```bash
 mkdir -p /var/www/html
 echo "<?php echo 'Halo dari Galadriel'; ?>" > /var/www/html/index.php
 ```
+
 File PHP sederhana untuk identifikasi worker
 
-
 #### 4. Configure Nginx - Port 8004
-```bash 
+
+```bash
 cat > /etc/nginx/sites-available/default <<'EOF'
 server {
     listen 8004;
@@ -1093,29 +1766,35 @@ server {
 EOF
 ```
 
-```bash 
+```bash
 listen 8004: Port khusus Galadriel
 server_name galadriel.k38.com: Domain specific
 fastcgi_pass unix:/var/run/php/php8.4-fpm.sock: PHP handler
 ```
 
 #### 5. Validate & Restart
+
 Uji konfigurasi Nginx..."
-```bash 
+
+```bash
 nginx -t
 echo "[6/7] Restart Nginx..."
 /etc/init.d/nginx restart
 ```
 
 #### 6. Local Testing
-```bash 
-lynx http://localhost:8004 
+
+```bash
+lynx http://localhost:8004
 ```
- "Galadriel PHP server aktif di port 8004."
+
+"Galadriel PHP server aktif di port 8004."
 
 #### Script Celeborn (setup-celeborn.sh)
+
 Perbedaan dari Galadriel:
-```bash 
+
+```bash
 listen 8005;
 server_name celeborn.k38.com;
 
@@ -1127,16 +1806,19 @@ lynx -dump http://localhost:8005 || curl -s http://localhost:8005
 ```
 
 ### Script Oropher (setup-oropher.sh)
+
 Perbedaan dari Galadriel:
-```bash 
+
+```bash
 listen 8006;
 server_name oropher.k38.com;
 
 # index.php
 echo "<?php echo 'Halo dari Oropher'; ?>" > /var/www/html/index.php
-``` 
+```
 
-#### 📝 Testing 
+#### 📝 Testing
+
 ```bash
 lynx http://galadriel:8004 || curl http://galadriel:8004
 lynx http://celeborn:8005 || curl http://celeborn:8005
@@ -1145,31 +1827,35 @@ lynx http://oropher:8006 || curl http://oropher:8006
 
 ### 📊 Expected Output
 
-| Worker | Port | URL | Output |
-|--------|------|-----|--------|
+| Worker    | Port | URL                     | Output                |
+| --------- | ---- | ----------------------- | --------------------- |
 | Galadriel | 8004 | `http://galadriel:8004` | `Halo dari Galadriel` |
-| Celeborn | 8005 | `http://celeborn:8005` | `Halo dari Celeborn` |
-| Oropher | 8006 | `http://oropher:8006` | `Halo dari Oropher` |
+| Celeborn  | 8005 | `http://celeborn:8005`  | `Halo dari Celeborn`  |
+| Oropher   | 8006 | `http://oropher:8006`   | `Halo dari Oropher`   |
 
 **Gambar 1**
-![13 (1)](assets/13%20(1).png)
+![13 (1)](<assets/13%20(1).png>)
 
 **Gambar 2**
-![13 (2)](assets/13%20(2).png)
+![13 (2)](<assets/13%20(2).png>)
 
 **Gambar 3**
-![13 (3)](assets/13%20(3).png)
+![13 (3)](<assets/13%20(3).png>)
 
 # Soal 14: Basic HTTP Authentication
+
 ### 📋 Deskripsi
+
 Keamanan adalah prioritas. Terapkan Basic HTTP Authentication pada nginx di setiap worker PHP, sehingga hanya mereka yang tahu kata sandi yang bisa masuk.
-Username: ```bash noldor```
-Password: ```bash silvan```
+Username: `bash noldor`
+Password: `bash silvan`
 
 ### 🔧 Solusi
+
 Prerequisite: Setup /etc/hosts di Client
 Tambahkan di setiap client (Miriel, Amandil, dll):
-```bash 
+
+```bash
 nano /etc/hosts
 
 # Tambahkan:
@@ -1177,11 +1863,14 @@ nano /etc/hosts
 192.230.2.4  celeborn.k38.com
 192.230.2.5  oropher.k38.com
 ```
+
 Mapping IP ke domain untuk DNS resolution
 
 ### Script Galadriel (setup-galadriel-auth.sh)
+
 #### 1. Install Dependencies
-``` bash
+
+```bash
 #!/bin/bash
 echo "[1/8] Update Repository..."
 apt update -y
@@ -1254,8 +1943,10 @@ Key Directives:
 auth_basic "Restricted Access": Enable auth dengan message
 auth_basic_user_file /etc/nginx/.htpasswd: Path ke password file
 if ($host ~* "^\d+\.\d+\.\d+\.\d+$"): Blokir akses via IP
-``` 
+```
+
 #### 6. Restart Services
+
 ```bash
 echo "[7/8] Tes dan Restart Service..."
 nginx -t && service nginx restart && service php8.4-fpm restart
@@ -1265,7 +1956,9 @@ echo "Uji akses pakai: curl -u noldor:silvan http://galadriel.k38.com:8004"
 ```
 
 #### Script Celeborn (setup-celeborn-auth.sh)
+
 Perbedaan dari Galadriel:
+
 ```bash
 # Port 8005
 listen 8005;
@@ -1280,7 +1973,9 @@ error_log /var/log/nginx/celeborn.error.log;
 ```
 
 #### Script Oropher (setup-oropher-auth.sh)
+
 Dengan Error Handling:
+
 ```bash
 #!/bin/bash
 set -e  # Berhenti kalau ada error fatal
@@ -1316,16 +2011,21 @@ Fallback untuk service commands
 ```
 
 #### 📝 Testing dari Client (Miriel)
+
 Test dengan lynx:
+
 ```bash
 lynx -auth=noldor:silvan http://galadriel:8004
 lynx -auth=noldor:silvan http://celeborn:8005
 lynx -auth=noldor:silvan http://oropher:8006
 Test tanpa authentication (akan ditolak):
 ```
-#### Output: 401 Unauthorized 
+
+#### Output: 401 Unauthorized
+
 ### 📊 Expected Output
-```bash 
+
+```bash
 **Dengan Auth:**
 Halo dari Galadriel
 Tanpa Auth:
@@ -1337,25 +2037,30 @@ html
 </body>
 </html>
 ```
+
 **Gambar 1**
-![14 (1)](assets/14%20(1).png)
+![14 (1)](<assets/14%20(1).png>)
 
 **Gambar 2**
-![14 (2)](assets/14%20(2).png)
+![14 (2)](<assets/14%20(2).png>)
 
 **Gambar 3**
-![14 (3)](assets/14%20(3).png)
+![14 (3)](<assets/14%20(3).png>)
 
 # Soal 15: X-Real-IP Header untuk Tracking Pengunjung
+
 ### 📋 Deskripsi
+
 Para Peri ingin tahu siapa yang mengunjungi taman mereka. Modifikasi konfigurasi Nginx di worker PHP untuk:
 Menambahkan header X-Real-IP yang diteruskan ke PHP
 Ubah index.php untuk menampilkan alamat IP pengunjung asli
 
 #### 🔧 Solusi
+
 Script Galadriel (setup-galadriel-realip.sh)
 1-3. Setup Awal (sama seperti soal 14)
-```bash 
+
+```bash
 #!/bin/bash
 set -e
 
@@ -1454,8 +2159,10 @@ echo "Akses: curl -u noldor:silvan http://galadriel.k38.com:8004"
 ```
 
 #### Script Celeborn (setup-celeborn-realip.sh)
+
 Perbedaan:
-```bash 
+
+```bash
 # Port 8005
 listen 8005;
 server_name celeborn.k38.com;
@@ -1499,13 +2206,16 @@ curl -u noldor:silvan http://galadriel.k38.com:8004
 curl -u noldor:silvan http://celeborn.k38.com:8005
 curl -u noldor:silvan http://oropher.k38.com:8006
 ```
+
 Penjelasan:
 Setup DNS resolver
 Mapping domain ke IP static worker
 Test koneksi ke semua worker dengan auth
 
 #### 📝 Testing
+
 Test dengan lynx:
+
 ```bash
 lynx -auth=noldor:silvan http://galadriel:8004
 lynx -auth=noldor:silvan http://celeborn:8005
@@ -1517,26 +2227,31 @@ lynx -auth=noldor:silvan http://oropher:8006
 ### 📊 Expected Output
 
 **Dari Miriel (IP: 192.230.1.10):**
+
 ```bash
 Halo dari Galadriel!
 Alamat IP pengunjung: 192.230.1.10
 ```
+
 **Gambar 1**
-![15 (1)](assets/15%20(1).png)
+![15 (1)](<assets/15%20(1).png>)
 
 **Gambar 2**
-![15 (2)](assets/15%20(2).png)
+![15 (2)](<assets/15%20(2).png>)
 
 **Gambar 3**
-![15 (3)](assets/15%20(3).png)
+![15 (3)](<assets/15%20(3).png>)
 
 # Soal 16 -Reverse Proxy Pharazon ke Peri Workers
+
 #### 📋 Deskripsi
+
 Pharazon dikonfigurasi sebagai reverse proxy untuk tiga PHP worker milik Peri: Galadriel (8004), Celeborn (8005), dan Oropher (8006).
- Tugasnya adalah meneruskan request dari client ke backend secara round robin, sambil mempertahankan Basic Auth dan X-Real-IP agar IP asli pengunjung tetap terbaca.
+Tugasnya adalah meneruskan request dari client ke backend secara round robin, sambil mempertahankan Basic Auth dan X-Real-IP agar IP asli pengunjung tetap terbaca.
 
 #### Solusi Singkat
-```bash 
+
+```bash
 apt update -y
 apt install -y nginx apache2-utils curl
 mkdir -p /var/www/html && echo "<h1>Pharazon Reverse Proxy</h1>" > /var/www/html/index.html
@@ -1560,32 +2275,35 @@ EOF
 nginx -t && service nginx restart
 ```
 
-
 #### 🧪 Pengujian
+
 Dari client
-``bash curl -u noldor:silvan http://pharazon.k38.com``
+`bash curl -u noldor:silvan http://pharazon.k38.com`
 
 Output bervariasi tergantung worker yang aktif, misalnya:
 Halo dari Galadriel!
 
 **Gambar 1**
-![16 (1)](assets/16%20(1).png)
+![16 (1)](<assets/16%20(1).png>)
 
 **Gambar 2**
-![16 (2)](assets/16%20(2).png)
+![16 (2)](<assets/16%20(2).png>)
 
 **Gambar 3**
-![16 (3)](assets/16%20(3).png)
+![16 (3)](<assets/16%20(3).png>)
 
 # Soal 17 - Benchmark & Failover Reverse Proxy Pharazon
 
 #### 📋 Deskripsi
+
 Pada soal ini dilakukan pengujian beban (benchmark) dan simulasi kegagalan (failover) pada Pharazon, yang bertugas sebagai reverse proxy menuju tiga PHP worker: Galadriel, Celeborn, dan Oropher.
- Tujuannya untuk memastikan bahwa jika salah satu worker down, Pharazon tetap dapat meneruskan trafik ke worker lain tanpa menghentikan layanan.
+Tujuannya untuk memastikan bahwa jika salah satu worker down, Pharazon tetap dapat meneruskan trafik ke worker lain tanpa menghentikan layanan.
 
 #### 🔧 Solusi Singkat
+
 Client Celebrimbor
-```bash 
+
+```bash
 set -e
 apt update -y && apt install -y apache2-utils curl
 echo "192.230.2.7 pharazon.k38.com" >> /etc/hosts
@@ -1608,60 +2326,72 @@ for i in {1..15}; do curl -s -u noldor:silvan http://pharazon.k38.com/; echo "--
 ```
 
 ## 🧪 Tahapan Pengujian
+
 #### Phase 1 – Normal (Semua Worker Aktif)
+
 Perintah:
-```bash 
+
+```bash
 for i in {1..20}; do curl -s -u noldor:silvan http://pharazon/; echo "---"; done
 ab -n 500 -c 30 -A noldor:silvan http://pharazon/
 ```
+
 #### Hasil:
- Respons bergantian dari Galadriel, Celeborn, dan Oropher → load balancing berfungsi (round robin).
+
+Respons bergantian dari Galadriel, Celeborn, dan Oropher → load balancing berfungsi (round robin).
 
 ### Phase 2 – Worker Galadriel Down
+
 Matikan Nginx di Galadriel:
+
 ```bash
 service nginx stop
 ```
 
 Ulangi test:
-```bash 
+
+```bash
 for i in {1..20}; do curl -s -u noldor:silvan http://pharazon/; echo "---"; done
 ab -n 500 -c 30 -A noldor:silvan http://pharazon/
 ```
 
 #### Hasil:
-```bash
+
+````bash
 Response hanya dari Celeborn dan Oropher. Pharazon tetap melayani request tanpa error fatal. Di log Pharazon (/var/log/nginx/error.log) muncul:
 
  connect() failed (111: Connection refused) while connecting to upstream, server: galadriel:8004
 
 #### Phase 3 – Recovery
 Hidupkan kembali Galadriel:
-```bash 
+```bash
 service nginx start
-```bash 
+```bash
 
 Tes ulang:
-```bash 
+```bash
 for i in {1..20}; do curl -s -u noldor:silvan http://pharazon/; echo "---"; done
-```
+````
 
 #### Hasil:
- Galadriel kembali muncul dalam rotasi load balancing — sistem berhasil recovery otomatis.
+
+Galadriel kembali muncul dalam rotasi load balancing — sistem berhasil recovery otomatis.
 
 **Gambar 1**
-![17 (1)](assets/17%20(1).png)
+![17 (1)](<assets/17%20(1).png>)
 
 **Gambar 2**
-![17 (2)](assets/17%20(2).png)
+![17 (2)](<assets/17%20(2).png>)
 
 # Soal 18 - Replikasi Database MariaDB (Palantir – Narvi)
 
 ## 📋 Deskripsi
+
 Tugas nomor 18 adalah mengonfigurasi replikasi database MariaDB dengan Palantir sebagai Master dan Narvi sebagai Slave.
- Tujuannya agar setiap perubahan data di Master otomatis tersalin ke Slave, menjaga sinkronisasi dan redundansi data antara dua server database.
+Tujuannya agar setiap perubahan data di Master otomatis tersalin ke Slave, menjaga sinkronisasi dan redundansi data antara dua server database.
 
 ### 🔧 Konfigurasi
+
 ```bash
 1️⃣ Palantir (Master)
 Script utama:
@@ -1683,7 +2413,7 @@ SHOW MASTER STATUS;
 
 📌 Catat File dan Position dari hasil SHOW MASTER STATUS untuk digunakan di Slave.
 
-```bash 
+```bash
 2️⃣ Narvi (Slave)
 Menjalankan MariaDB dengan ID berbeda:
 mariadbd --user=mysql \
@@ -1704,25 +2434,27 @@ CHANGE MASTER TO
 START SLAVE;
 SHOW SLAVE STATUS\G
 ```
+
 ✅ Pastikan Slave_IO_Running: Yes dan Slave_SQL_Running: Yes.
 
-
 ### Pengujian
+
 Di Palantir:
-```bash 
+
+```bash
 USE jarkom;
 CREATE TABLE test2 (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(255));
 INSERT INTO test2 (nama) VALUES ('Frodo'), ('Samwise');
 ```
 
-```bash 
+```bash
 Di Narvi:
 USE jarkom;
 SHOW TABLES;
 SELECT * FROM test2;
 ```
+
 📈 Hasil: tabel test2 dan isinya otomatis muncul di Narvi → replikasi berhasil.
 
 **Gambar 1**
-![18 (1)](assets/18%20(1).png)
-
+![18 (1)](<assets/18%20(1).png>)

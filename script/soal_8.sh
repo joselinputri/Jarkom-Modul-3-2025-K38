@@ -1,177 +1,99 @@
-# Setup Palantir
-# Set DNS & Proxy
-cat << EOF > /etc/resolv.conf
-search K38.com
-nameserver 192.230.3.10
-nameserver 192.230.4.13
-nameserver 192.168.122.1
-EOF
+Konfigurasi .env & Database
+Langkah ini dilakuin di semua 3 worker (Elendil, Isildur, Anarion).
+1. Masuk ke Direktori Benteng:
+```
+cd /var/www/benteng
+```
+2. Salin File .env & Buat Kunci:
+          ```
+# Salin dari file contoh
+cp .env.example .env
 
-export http_proxy="http://192.230.5.10:3128"
-export https_proxy="http://192.230.5.10:3128"
-echo 'Acquire::http::Proxy "http://192.230.5.10:3128/";' > /etc/apt/apt.conf.d/01proxy
+# Generate kunci aplikasi Laravel
+php artisan key:generate
+```
 
-# Install MariaDB
+##Buat Database
+
+```
 apt update
-apt install mariadb-server -y
+apt install mariadb-server
+```
+#Start Service MariaDB
+```
+/etc/init.d/mariadb start
+```
+# Cek Status
+```
+/etc/init.d/mariadb status
+```
+#Masuk ke MySQL
+```
+mysql
+```
+#Didalam mysql, buat database
+-- 1. Buat database-nya
+CREATE DATABASE db_benteng;
 
-# Start MariaDB
-mysqld_safe --datadir='/var/lib/mysql' &
-sleep 5
+-- 2. Buat user-nya (pakai '%' biar bisa diakses dari Elendil dkk.)
+CREATE USER 'user_benteng'@'%' IDENTIFIED BY 'jarkom_menyenangkan';
 
-# Setup Database & User
-mysql -u root << 'MYSQL_SCRIPT'
--- Set root password
-ALTER USER 'root'@'localhost' IDENTIFIED BY 'password_palantir';
+-- 3. Kasih user itu izin ke database baru
+GRANT ALL PRIVILEGES ON db_benteng.* TO 'user_benteng'@'%';
+
+-- 4. Terapkan perubahan
 FLUSH PRIVILEGES;
 
--- Create database
-CREATE DATABASE IF NOT EXISTS dbkelompok;
+-- 5. Keluar dari MariaDB
+EXIT;
+```
+##konfigurasi di palantir (perizinan koneksi)
+```
+# Di terminal Palantir
+nano /etc/mysql/mariadb.conf.d/50-server.cnf
+```
+Cari baris bind-address: Kamu akan lihat ini:
+```
+bind-address            = 0.0.0.0#ubah ini
+```
+(127.0.0.1 artinya "cuma dengerin localhost").
+#restart
+```
+/etc/init.d/mariadb restart
+```
 
--- Create user untuk remote access
-CREATE USER IF NOT EXISTS 'kelompok'@'%' IDENTIFIED BY 'password_kelompok';
-GRANT ALL PRIVILEGES ON dbkelompok.* TO 'kelompok'@'%';
-FLUSH PRIVILEGES;
-
--- Verify
-SHOW DATABASES;
-SELECT User, Host FROM mysql.user WHERE User='kelompok';
-MYSQL_SCRIPT
-
-# Configure Remote Access
-cat << EOF > /etc/mysql/mariadb.conf.d/50-server.cnf
-[mysqld]
-user            = mysql
-pid-file        = /var/run/mysqld/mysqld.pid
-socket          = /var/run/mysqld/mysqld.sock
-port            = 3306
-basedir         = /usr
-datadir         = /var/lib/mysql
-tmpdir          = /tmp
-lc-messages-dir = /usr/share/mysql
-
-# Allow remote connections
-bind-address    = 0.0.0.0
-
-# Character set
-character-set-server  = utf8mb4
-collation-server      = utf8mb4_general_ci
-EOF
-
-# Configure .env di Workers (Elendil, Isildur, Anarion)
-cd /var/www/laravel
-
-cp .env.example .env
-
-cat << 'EOF' > .env
-APP_NAME=Laravel
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=http://elendil.K38.com:8001
-
-LOG_CHANNEL=stack
-LOG_LEVEL=debug
-
-# Database Configuration (Palantir)
+3. Edit File .env: Buka editor-nya:
+```
+nano .env
+```
+Cari bagian DB_CONNECTION dan ubah biar konek ke Palantir (IP: 192.230.4.5):
 DB_CONNECTION=mysql
-DB_HOST=192.230.3.25
+DB_HOST=192.230.4.5
 DB_PORT=3306
-DB_DATABASE=dbkelompok
-DB_USERNAME=kelompok
-DB_PASSWORD=password_kelompok
+DB_DATABASE=db_benteng # (Ganti ini)
+DB_USERNAME=user_benteng # (Ganti ini)
+DB_PASSWORD=jarkom_menyenangkan    # (Ganti ini)
 
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
-SESSION_LIFETIME=120
-EOF
+(Pastikan kamu udah bikin database dan user-nya di node Palantir ya, bro).
+8.3. Konfigurasi Nginx (Gerbang Unik)
+Ini yang krusial. Tiap Ksatria punya gerbang (port) dan domain-nya sendiri.
+A. Di Elendil (Port 8001)
+1. Buka file konfigurasi Nginx:
+```
+nano /etc/nginx/sites-available/default
+```
+2.  Hapus semua isinya dan ganti dengan ini (ganti K38):
 
-# Generate key
-php artisan key:generate
-
-# Run migration & seeding (HANYA DI ELENDIL!)
-php artisan migrate --force
-php artisan db:seed --force
-
-# Di Isildur (192.230.1.3):
-cd /var/www/laravel
-
-cp .env.example .env
-
-cat << 'EOF' > .env
-APP_NAME=Laravel
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=http://isildur.K38.com:8002
-
-LOG_CHANNEL=stack
-LOG_LEVEL=debug
-
-# Database Configuration (Palantir)
-DB_CONNECTION=mysql
-DB_HOST=192.230.3.25
-DB_PORT=3306
-DB_DATABASE=dbkelompok
-DB_USERNAME=kelompok
-DB_PASSWORD=password_kelompok
-
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
-SESSION_LIFETIME=120
-EOF
-
-# Generate key
-php artisan key:generate
-
-# Di Anarion (192.230.1.12):
-cd /var/www/laravel
-
-cp .env.example .env
-
-cat << 'EOF' > .env
-APP_NAME=Laravel
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=http://anarion.K38.com:8003
-
-LOG_CHANNEL=stack
-LOG_LEVEL=debug
-
-# Database Configuration (Palantir)
-DB_CONNECTION=mysql
-DB_HOST=192.230.3.25
-DB_PORT=3306
-DB_DATABASE=dbkelompok
-DB_USERNAME=kelompok
-DB_PASSWORD=password_kelompok
-
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
-SESSION_LIFETIME=120
-EOF
-
-# Generate key
-php artisan key:generate
-
-# Configure Nginx (Port Unique per Worker)
-# Elendil (8001)
-cat << 'EOF' > /etc/nginx/sites-available/laravel
+```
 server {
+    # Gerbang unik Elendil
     listen 8001;
-    
-    # Hanya bisa diakses via domain, bukan IP
-    server_name elendil.K38.com;
-    
-    root /var/www/laravel/public;
-    index index.php index.html index.htm;
+
+    # Hanya jawab domain ini
+    server_name elendil.K38.com; 
+    root /var/www/benteng/public;
+
+    index index.php;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
@@ -179,106 +101,35 @@ server {
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
+        # Arahkan ke socket PHP 8.4
         fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
     }
-
-    location ~ /\.ht {
-        deny all;
-    }
-
-    access_log /var/log/nginx/elendil_access.log;
-    error_log /var/log/nginx/elendil_error.log;
 }
-EOF
-
-# Enable site
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/laravel /etc/nginx/sites-enabled/
-
-# Test & Start
-nginx -t
-pkill nginx
-pkill php-fpm
-php-fpm8.4 -D
-nginx
-
-# Di Isildur (Port 8002):
-cat << 'EOF' > /etc/nginx/sites-available/laravel
-server {
-    listen 8002;
-    
+```
+B. Di Isildur (Port 8002)
+Buka file: nano /etc/nginx/sites-available/default
+Hapus semua isinya, ganti dengan config yang sama persis kayak Elendil, tapi UBAH 2 BARIS INI:
+```
+listen 8002; # Gerbang Isildur
     server_name isildur.K38.com;
-    
-    root /var/www/laravel/public;
-    index index.php index.html index.htm;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ /\.ht {
-        deny all;
-    }
-
-    access_log /var/log/nginx/isildur_access.log;
-    error_log /var/log/nginx/isildur_error.log;
-}
-EOF
-
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/laravel /etc/nginx/sites-enabled/
-
-nginx -t
-pkill nginx
-pkill php-fpm
-php-fpm8.4 -D
-nginx
-
-# Di Anarion (Port 8003):
-cat << 'EOF' > /etc/nginx/sites-available/laravel
-server {
-    listen 8003;
-    
+```
+C. Di Anarion (Port 8003)
+Buka file: nano /etc/nginx/sites-available/default
+Hapus semua isinya, ganti dengan config yang sama persis kayak Elendil, tapi UBAH 2 BARIS INI:
+```
+listen 8003; # Gerbang Anarion
     server_name anarion.K38.com;
-    
-    root /var/www/laravel/public;
-    index index.php index.html index.htm;
+```
+8.4. Restart Service
+Terakhir, restart Nginx dan PHP-FPM di semua 3 Ksatria (Elendil, Isildur, Anarion).
+```
+# (Jalankan di ketiga Ksatria)
 
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
+# Restart Nginx
+/etc/init.d/nginx restart
 
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
+# Restart PHP-FPM
+/etc/init.d/php8.4-fpm restart
+```
 
-    location ~ /\.ht {
-        deny all;
-    }
-
-    access_log /var/log/nginx/anarion_access.log;
-    error_log /var/log/nginx/anarion_error.log;
-
-EOF
-
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/laravel /etc/nginx/sites-enabled/
-
-nginx -t
-pkill nginx
-pkill php-fpm
-php-fpm8.4 -D
-nginx
 
