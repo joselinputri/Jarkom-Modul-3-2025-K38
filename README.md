@@ -1676,11 +1676,12 @@ Beban terdistribusi merata tapi worker kewalahan
 ### Tahap 3: Monitoring Worker
 Cek resource usage di setiap worker:
 
-# Atau cek load via SSH
+#### Atau cek load via SSH
 Cek log error di Elros:
 ```bash
 tail -f /var/log/nginx/error.log
 tail -f /var/log/nginx/access.log
+
 Sample Log Error:
 [error] upstream timed out
 [warn] worker_connections exceeded
@@ -2617,3 +2618,324 @@ SELECT * FROM test2;
 
 **Gambar 1**
 ![18 (1)](<assets/18%20(1).png>)
+
+
+# Soal 19 - Rate Limiting pada Load Balancer
+### Deskripsi
+Gelombang serangan dari Mordor semakin intens. Implementasikan rate limiting pada kedua Load Balancer (Elros dan Pharazon) menggunakan Nginx. Batasi agar satu alamat IP hanya bisa melakukan 10 permintaan per detik. Uji coba dengan menjalankan ab dari satu client dengan konkurensi tinggi (-c 50 atau lebih) dan periksa log Nginx untuk melihat pesan request yang ditolak atau ditunda karena rate limit.
+
+### Solusi
+#### 1. Setup Rate Limiting di ELROS
+Script: /root/setup-elros-ratelimit.sh
+```bash
+apt update && apt install -y nginx
+```
+
+# Konfigurasi nginx.conf
+```bash
+cat > /etc/nginx/nginx.conf <<'EOF'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    limit_req_zone $binary_remote_addr zone=rate_limit_elros:10m rate=10r/s;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+    include /etc/nginx/sites-enabled/*;
+}
+EOF
+```
+
+### Site config
+```bash
+cat > /etc/nginx/sites-available/elros <<'EOF'
+upstream kesatria_numenor {
+    server elendil:8001;
+    server isildur:8002;
+    server anarion:8003;
+}
+
+server {
+    listen 80;
+    server_name elros.k38.com;
+
+    location / {
+        limit_req zone=rate_limit_elros burst=20 nodelay;
+        proxy_pass http://kesatria_numenor;
+        add_header X-RateLimit "10 req/s" always;
+    }
+
+    access_log /var/log/nginx/elros.access.log;
+    error_log /var/log/nginx/elros.error.log;
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/elros /etc/nginx/sites-enabled/
+nginx -t && nginx
+```
+
+### 2. Setup Rate Limiting di PHARAZON
+Script: /root/setup-pharazon-ratelimit.sh
+```bash
+apt update && apt install -y nginx
+
+cat > /etc/nginx/nginx.conf <<'EOF'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=10r/s;
+    
+    upstream Kesatria_Lorien {
+        server galadriel:8004;
+        server celeborn:8005;
+        server oropher:8006;
+    }
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+    include /etc/nginx/sites-enabled/*;
+}
+EOF
+```
+```bash
+cat > /etc/nginx/sites-available/pharazon <<'EOF'
+server {
+    listen 80;
+    server_name pharazon.k38.com;
+
+    location / {
+        limit_req zone=req_limit_per_ip burst=20 nodelay;
+        proxy_pass http://Kesatria_Lorien;
+        add_header X-RateLimit "10 req/s" always;
+    }
+
+    access_log /var/log/nginx/pharazon.access.log;
+    error_log /var/log/nginx/pharazon.error.log;
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/pharazon /etc/nginx/sites-enabled/
+nginx -t && nginx
+```
+
+### Tahapan Pengujian
+### Setup Client (Miriel)
+```bash
+apt update -y && apt install -y apache2-utils curl
+echo "10.15.1.1 elros.k38.com" >> /etc/hosts
+echo "10.15.2.7 pharazon.k38.com" >> /etc/hosts
+```
+
+### Phase 1 - Test ELROS
+```bash
+ab -n 200 -c 50 http://elros.k38.com/api/airing/
+```
+
+Hasil:
+Concurrency Level:      50
+Complete requests:      200
+Failed requests:        132
+Non-2xx responses:      132
+Requests per second:    10.97 [#/sec]
+✅ Rate limiting aktif - RPS ≈11 (mendekati limit 10 req/s)
+
+### Phase 2 - Test PHARAZON
+```bash
+ab -n 200 -c 50 -A noldor:silvan http://pharazon.k38.com/
+```
+
+### Hasil:
+Concurrency Level:      50
+Complete requests:      200
+Failed requests:        145
+Non-2xx responses:      145
+Requests per second:    10.22 [#/sec]
+✅ Rate limiting aktif - RPS ≈10 (tepat pada limit)
+
+### Phase 3 - Cek Log Nginx
+Di Elros:
+```bash
+tail -20 /var/log/nginx/elros.error.log
+```
+
+### Output:
+[error] limiting requests, excess: 20.123 by zone "rate_limit_elros", client: 10.15.1.5
+[warn] limiting requests, excess: 15.456 by zone "rate_limit_elros", client: 10.15.1.5
+### Di Pharazon:
+```bash
+tail -20 /var/log/nginx/pharazon.error.log
+```
+Output:
+[error] limiting requests, excess: 18.234 by zone "req_limit_per_ip", client: 10.15.1.6
+[warn] limiting requests, excess: 22.567 by zone "req_limit_per_ip", client: 10.15.1.6
+
+### 📊 Kesimpulan
+Load BalancerRPS TargetRPS HasilStatusElros10 req/s10.97 req/s✅ AktifPharazon10 req/s10.22 req/s✅ Aktif
+
+foto 19 
+
+
+## Soal 20 — NGINX Caching Setup untuk Pharazon
+
+### 📋 Deskripsi Soal
+> Beban pada para worker semakin berat. Aktifkan **Nginx Caching** pada **Pharazon** untuk menyimpan salinan halaman PHP yang sering diakses.  
+Gunakan `curl` dari client untuk memeriksa response header.  
+Buktikan bahwa permintaan **kedua dan seterusnya** untuk halaman yang sama mendapatkan status **HIT** dari cache dan tidak lagi membebani worker PHP.
+
+---
+
+## ⚙️ Implementasi
+
+### 🧩 1. Pembuatan Direktori Cache
+Membuat folder penyimpanan cache untuk Nginx.
+
+```bash
+echo "[1] Membuat direktori cache..."
+mkdir -p /var/cache/nginx
+chown -R www-data:www-data /var/cache/nginx
+```
+
+### 2. Membersihkan Konfigurasi Lama
+Menghapus konfigurasi bawaan agar tidak konflik dengan setup baru.
+```bash 
+echo "[2] Membersihkan konfigurasi lama..."
+rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-available/default
+rm -f /etc/nginx/sites-enabled/pharazon
+```
+
+### 3. Menulis Konfigurasi Utama nginx.conf
+Menambahkan konfigurasi global Nginx termasuk path cache dan upstream.
+```bash 
+echo "[3] Menulis konfigurasi utama nginx.conf..."
+cat > /etc/nginx/nginx.conf << 'EOF'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    # CACHE PATH
+    proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=my_cache:20m max_size=200m inactive=60m use_temp_path=off;
+
+    # UPSTREAM PHP WORKERS
+    upstream Kesatria_Lorien {
+        server galadriel:8004;
+        server celeborn:8005;
+        server oropher:8006;
+    }
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+
+    include /etc/nginx/sites-enabled/*;
+}
+EOF
+```
+
+###  4. Menulis Konfigurasi Virtual Host pharazon
+Menambahkan reverse proxy dan aktivasi caching untuk setiap permintaan.
+
+```bash
+echo "[4] Menulis konfigurasi virtual host Pharazon..."
+cat > /etc/nginx/sites-available/pharazon << 'EOF'
+server {
+    listen 80;
+    server_name pharazon;
+
+    # Tolak akses via IP langsung
+    if ($host ~* "^\d+\.\d+\.\d+\.\d+$") {
+        return 403;
+    }
+
+    location / {
+        proxy_pass http://Kesatria_Lorien;
+
+        # Aktifkan cache
+        proxy_cache my_cache;
+        proxy_cache_valid 200 302 10m;
+        proxy_cache_valid 404 1m;
+
+        add_header X-Cache-Status $upstream_cache_status always;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    access_log /var/log/nginx/pharazon.access.log;
+    error_log /var/log/nginx/pharazon.error.log;
+}
+EOF
+```
+
+### 5. Mengaktifkan Site Pharazon
+Membuat symbolic link untuk mengaktifkan konfigurasi.
+```bash
+echo "[5] Mengaktifkan site Pharazon..."
+ln -sf /etc/nginx/sites-available/pharazon /etc/nginx/sites-enabled/pharazon
+```
+
+### 6. Mengecek dan Reload Konfigurasi
+Memvalidasi konfigurasi dan reload service Nginx jika valid.
+```bash
+echo "[6] Mengecek konfigurasi..."
+if nginx -t; then
+    echo "[OK] Konfigurasi valid. Reloading nginx..."
+    nginx -s reload
+else
+    echo "[ERROR] Konfigurasi bermasalah! Periksa log di atas."
+    exit 1
+fi
+```
+
+###  7. Menampilkan Status Nginx
+Memastikan Nginx aktif dan berjalan normal.
+```bash
+echo "[7] Menampilkan status Nginx..."
+service status nginx | head -n 10
+```
+
+### 8. Tes Koneksi Lokal
+
+Melakukan tes menggunakan curl untuk memastikan akses berjalan.
+```bash
+echo "[8] Tes koneksi lokal..."
+curl -I -u noldor:silvan http://localhost || echo "Cek manual: mungkin butuh edit /etc/hosts"
+```
+
+### Tabel Hasil Uji Cache
++----------------------------+-------------------------------+---------------------------+
+| Tahap Uji                 | Command                       | Hasil Header              |
++----------------------------+-------------------------------+---------------------------+
+| Permintaan Pertama        | curl -I -u noldor:silvan http://pharazon.k38.com/ |
+|                            |                               | X-Cache-Status: MISS      |
++----------------------------+-------------------------------+---------------------------+
+| Permintaan Kedua (ulang)  | curl -I -u noldor:silvan http://pharazon.k38.com/ |
+|                            |                               | X-Cache-Status: HIT       |
++----------------------------+-------------------------------+---------------------------+
+
+foto soal 20
+
+
