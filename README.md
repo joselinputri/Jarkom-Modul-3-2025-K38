@@ -1743,7 +1743,7 @@ Non-2xx responses:      2000
 | Penuh (After Weight)   | -n 2000 -c 100| 6272.23             | 1978           | 2000             | 15.943              |
 +------------------------+----------------+---------------------+----------------+------------------+---------------------+
 ```
-foto soal 11
+![111.png](assets/111.png)
 
 # Soal 12: Setup PHP Worker (Galadriel, Celeborn, Oropher)
 
@@ -2787,8 +2787,15 @@ Output:
 ### 📊 Kesimpulan
 Load BalancerRPS TargetRPS HasilStatusElros10 req/s10.97 req/s✅ AktifPharazon10 req/s10.22 req/s✅ Aktif
 
-foto 19 
+| ![19-1](assets/19%20(1).png) | **Gambar 19 (1)** – Konfigurasi awal rate limiting di Nginx |
 
+| ![19-2](assets/19%20(2).png) | **Gambar 19 (2)** – Pengujian `ab` dengan concurrency tinggi |
+
+| ![19-3](assets/19%20(3).png) | **Gambar 19 (3)** – Log Nginx menunjukkan request ditolak |
+
+| ![19-4](assets/19%20(4).png) | **Gambar 19 (4)** – Pembatasan request berhasil diterapkan |
+
+| ![19-5](assets/19%20(5).png) | **Gambar 19 (5)** – Grafik performa worker setelah rate limit |
 
 ## Soal 20 — NGINX Caching Setup untuk Pharazon
 
@@ -2926,16 +2933,12 @@ curl -I -u noldor:silvan http://localhost || echo "Cek manual: mungkin butuh edi
 ```
 
 ### Tabel Hasil Uji Cache
-+----------------------------+-------------------------------+---------------------------+
-| Tahap Uji                 | Command                       | Hasil Header              |
-+----------------------------+-------------------------------+---------------------------+
-| Permintaan Pertama        | curl -I -u noldor:silvan http://pharazon.k38.com/ |
-|                            |                               | X-Cache-Status: MISS      |
-+----------------------------+-------------------------------+---------------------------+
-| Permintaan Kedua (ulang)  | curl -I -u noldor:silvan http://pharazon.k38.com/ |
-|                            |                               | X-Cache-Status: HIT       |
-+----------------------------+-------------------------------+---------------------------+
+### 🧾 Hasil Uji Cache
 
-foto soal 20
+| Tahap Uji | Command | Hasil Header |
+|------------|----------|---------------|
+| **Permintaan Pertama** | `curl -I -u noldor:silvan http://pharazon.k38.com/` | `X-Cache-Status: MISS` |
+| **Permintaan Kedua (ulang)** | `curl -I -u noldor:silvan http://pharazon.k38.com/` | `X-Cache-Status: HIT` |
 
+![20.png](assets/20.png)
 
