@@ -1584,6 +1584,165 @@ Terakhir, restart Nginx dan PHP-FPM di semua 3 Ksatria (Elendil, Isildur, Anario
 # Restart PHP-FPM
 /etc/init.d/php8.4-fpm restart
 ```
+# Soal 11: Benchmark dan Strategi Pertahanan Númenor
+### Deskripsi Soal
+Musuh mencoba menguji kekuatan pertahanan Númenor. Dari node client, luncurkan serangan benchmark (ab) ke elros.<xxxx>.com/api/airing/:
+
+```bash 
+Serangan Awal: -n 100 -c 10 (100 permintaan, 10 bersamaan)
+Serangan Penuh: -n 2000 -c 100 (2000 permintaan, 100 bersamaan)
+Pantau kondisi para worker dan periksa log Elros
+Strategi Bertahan: Tambahkan weight dalam algoritma, kemudian catat apakah lebih baik atau tidak
+```
+
+## Implementasi
+1. Persiapan di Node Client (Isildur/Amandil)
+Sebelum melakukan benchmark, pastikan tools yang diperlukan sudah terinstall
+### Install apache2-utils untuk tool ab
+```bash 
+apt-get update
+apt-get install -y apache2-utils curl
+```
+
+### Verifikasi instalasi
+```bash
+ab -V
+curl -V
+```
+
+### 2. Konfigurasi Awal Load Balancer (Elros)
+File: /etc/nginx/nginx.conf atau /etc/nginx/sites-available/default
+```bash 
+nginxupstream kesatria_numenor {
+    # Round Robin tanpa weight (default)
+    server 10.15.3.1:8001;  # Elendil
+    server 10.15.3.2:8002;  # Isildur
+    server 10.15.3.3:8003;  # Anarion
+}
+
+server {
+    listen 80;
+    server_name elros.k38.com;
+
+    location / {
+        proxy_pass http://kesatria_numenor;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+### Restart Nginx:
+```bash
+nginx -t
+service nginx restart
+```
+
+### 📊 Eksekusi Benchmark
+Tahap 1: Serangan Awal (Baseline)
+Dari node client, jalankan benchmark ringan:
+```bash
+ab -n 100 -c 10 http://elros.k38.com/api/airing/
+```
+
+#### Penjelasan Parameter:
+```bash 
+-n 100: Total 100 requests
+-c 10: 10 concurrent connections
+```
+Output disimpan untuk analisis
+Hasil Serangan Awal:
+```bash 
+Requests per second:    3923.88 [#/sec]
+Time per request:       2.549 [ms] (mean)
+Failed requests:        79
+Non-2xx responses:      100
+Tahap 2: Serangan Penuh (Sebelum Weight)
+Tingkatkan intensitas serangan:
+bashab -n 2000 -c 100 http://elros.k38.com/api/airing/ > /tmp/ab_penuh_before.log 2>&1
+Hasil Sebelum Weight:
+Requests per second:    8214.02 [#/sec]
+Time per request:       12.174 [ms] (mean)
+Failed requests:        1978
+Non-2xx responses:      2000
+```
+
+Observasi:
+RPS meningkat signifikan ke 8214 req/s
+Namun hampir semua request gagal (1978 failed)
+Beban terdistribusi merata tapi worker kewalahan
+
+### Tahap 3: Monitoring Worker
+Cek resource usage di setiap worker:
+
+# Atau cek load via SSH
+Cek log error di Elros:
+```bash
+tail -f /var/log/nginx/error.log
+tail -f /var/log/nginx/access.log
+Sample Log Error:
+[error] upstream timed out
+[warn] worker_connections exceeded
+[error] connect() failed (111: Connection refused)
+```
+
+### Strategi Bertahan: Implementasi Weight
+Modifikasi Upstream dengan Weight
+Worker yang lebih powerful dapat diberi weight lebih besar untuk menangani beban lebih:
+Updated Nginx Config:
+```bash
+nginxupstream kesatria_numenor {
+    # Weighted Round Robin
+    server 10.15.3.1:8001 weight=3;  # Elendil - 50% traffic
+    server 10.15.3.2:8002 weight=2;  # Isildur - 33% traffic
+    server 10.15.3.3:8003 weight=1;  # Anarion - 17% traffic
+}
+
+server {
+    listen 80;
+    server_name elros.k38.com;
+
+    location / {
+        proxy_pass http://kesatria_numenor;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # Connection settings untuk load balancing
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+Reload Configuration:
+```bash
+nginx -t
+nginx -s reload
+```
+
+### Tahap 4: Serangan Penuh (Setelah Weight)
+```bash
+ab -n 2000 -c 100 http://elros.k38.com/api/airing/ > /tmp/ab_penuh_after.log 2>&1
+```
+
+#### Hasil Setelah Weight:
+Requests per second:    6272.23 [#/sec]
+Time per request:       15.943 [ms] (mean)
+Failed requests:        1978
+Non-2xx responses:      2000
+```bash 
++------------------------+----------------+---------------------+----------------+------------------+---------------------+
+| Tahap                  | Perintah       | RPS                 | Failed Requests | Non-2xx Responses | Time/Req (ms)       |
++------------------------+----------------+---------------------+----------------+------------------+---------------------+
+| Awal (Baseline)        | -n 100 -c 10  | 3923.88             | 79             | 100              | 2.549               |
+| Penuh (Before Weight)  | -n 2000 -c 100| 8214.02             | 1978           | 2000             | 12.174              |
+| Penuh (After Weight)   | -n 2000 -c 100| 6272.23             | 1978           | 2000             | 15.943              |
++------------------------+----------------+---------------------+----------------+------------------+---------------------+
+```
+foto soal 11
 
 # Soal 12: Setup PHP Worker (Galadriel, Celeborn, Oropher)
 
