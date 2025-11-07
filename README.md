@@ -750,8 +750,11 @@ ip a
 ```
 
 #Gilgalad harus mendapat IP di rentang 192.230.2.x.
+![2.1](assets/2.1.png)
 #Amandil harus mendapat IP di rentang 192.230.1.x.
+![2.2](assets/2.2.png)
 #Khamul harus mendapat IP tepat 192.230.3.95.
+![2.3](assets/2.3.png)
 
 # Soal 3
 
@@ -909,6 +912,7 @@ Tes Ping (Harus BERHASIL)
 ```
 
 ping 8.8.8.8
+![3.1](assets/3.1.png)
 
 ```
 
@@ -926,7 +930,17 @@ dig google.com
 
 ```
 
+![3.2](assets/3.2.png)
+
 # Soal 4
+
+Pada soal ini, kita diminta untuk mengatur DNS Master-Slave.
+
+Erendis (Master): Lo harus konfig dia jadi server DNS utama. Bikin "peta" (zone file) baru bernama K38.com.
+
+Isi Peta: Di dalem peta itu, lo harus daftarin nama ns1 (Erendis) dan ns2 (Amdir), plus nama-nama host penting (Palantir, Elros, Elendil, dll.) beserta IP address mereka.
+
+Amdir (Slave): Lo harus konfig dia biar otomatis menyalin peta (K38.com) dari Erendis.
 
 ```
 # Di terminal Durin
@@ -1124,6 +1138,8 @@ b. Cek File DNS
 cat /etc/resolv.conf
 ```
 
+![4.1](assets/4.1.png)
+
 (Outputnya harus nameserver 192.230.3.2 dan nameserver 192.230.4.2).
 
 c. Tes dig
@@ -1136,7 +1152,21 @@ dig elendil.K38.com
 dig google.com
 ```
 
+![4.2](assets/4.2.png)
+
 # Soal 5
+
+Pada soal ini, kita diminta melengkapi server DNS Erendis (Master) yang udah kita buat di Soal 4.
+
+Lo harus nambahin 3 hal di Erendis:
+
+Alias www: Bikin alias (CNAME) biar www.<xxxx>.com nunjuk ke domain utamamu (<xxxx>.com).
+
+Reverse PTR: Bikin "peta terbalik" (PTR) biar kalo orang ngecek IP-nya Erendis (192.230.3.2) dan Amdir (192.230.4.2), nama domain mereka (ns1 & ns2) bakal muncul.
+
+Pesan Rahasia (TXT): Nambahin TXT record di elros ("Cincin Sauron") dan pharazon ("Aliansi Terakhir").
+
+Amdir (Slave) bakal otomatis nyalin semua perubahan ini.
 
 1. Node Erendis: Update Peta Utama (Forward Zone)
    Ini untuk menambah CNAME (www) dan TXT (pesan rahasia).
@@ -1289,11 +1319,15 @@ named -g -4
 dig www.K38.com
 ```
 
+![5.1](assets/5.1.png)
+
 b. Tes TXT (Pesan Rahasia):
 
 ```
 dig elros.K38.com TXT
 ```
+
+![5.2](assets/5.2.png)
 
 c. Tes PTR (Peta Terbalik):
 
@@ -1301,11 +1335,25 @@ c. Tes PTR (Peta Terbalik):
 # Tes IP Erendis
 dig -x 192.230.3.2
 
+![5.3](assets/5.3.png)
+
 # Tes IP Amdir
 dig -x 192.230.4.2
 ```
 
+![5.3](assets/5.4.png)
+
 # Soal 6
+
+Pada soal ini, kita diminta ngatur waktu sewa (lease time) di Aldarion (DHCP Server).
+
+Lo harus edit file dhcpd.conf buat nambahin:
+
+Jaringan Manusia (Jaringan 1): Waktu sewa (default-lease-time) jadi setengah jam (1800 detik).
+
+Jaringan Peri (Jaringan 2): Waktu sewa (default-lease-time) jadi seperenam jam (600 detik).
+
+Global: Waktu sewa maksimal (max-lease-time) untuk semua jaringan jadi satu jam (3600 detik).
 
 Konfigurasi di Aldarion
 Di terminal Aldarion (192.230.4.3):
@@ -1366,6 +1414,16 @@ subnet 192.230.2.0 netmask 255.255.255.0 {
 
 # Soal 7
 
+Pada soal ini, kita diminta nyiapin server buat aplikasi Laravel.
+
+Lo harus masuk ke ketiga worker (Elendil, Isildur, Anarion) dan:
+
+Instal semua tools yang dibutuhin: nginx, php8.4 (termasuk FPM), dan composer.
+
+Download source code Laravel-nya (dari "Resource-laravel").
+
+Terakhir, lo juga harus instal lynx di node klien (kayak Gilgalad) buat ngetes di soal-soal berikutnya.
+
 Bagian 1: Instalasi Tools (Di 3 Ksatria)
 Lakukan langkah-langkah ini di terminal Elendil, Isildur, DAN Anarion.
 1.1. Instal Nginx, Composer, dan PHP
@@ -1415,7 +1473,17 @@ lynx elendil.K38.com
 Hasilnya PASTI GAGAL atau akan nampilin halaman "Welcome to Nginx" (default).
 Kenapa? Kita baru install Nginx, tapi kita belum mengkonfigurasi "benteng"-nya (Nginx server block) untuk menjalankan aplikasi Laravel di /var/www/benteng.
 
+![7](assets/7.png)
+
 # Soal 8
+
+Pada soal ini, kita diminta ngonfigurasi ketiga worker Laravel (Elendil, Isildur, Anarion) biar siap jalan:
+
+Konek ke Database: Lo harus ngedit file .env di ketiga worker biar nyambung ke Palantir (Database Server).
+
+Bikin Gerbang Unik: Lo harus ngatur Nginx di tiap worker biar "dengerin" di port yang beda-beda (8001, 8002, 8003) dan cuma mau nerima koneksi kalo diakses pake domain (bukan IP).
+
+Inisialisasi Database: Lo harus ngejalanin php artisan migrate --seed dari Elendil buat ngebikin tabel dan ngisi data awal di Palantir.
 
 Konfigurasi .env & Database
 Langkah ini dilakuin di semua 3 worker (Elendil, Isildur, Anarion).
@@ -1427,6 +1495,7 @@ cd /var/www/benteng
 ```
 
 2. Salin File .env & Buat Kunci:
+
    ```
 
    ```
@@ -1584,6 +1653,11 @@ Terakhir, restart Nginx dan PHP-FPM di semua 3 Ksatria (Elendil, Isildur, Anario
 # Restart PHP-FPM
 /etc/init.d/php8.4-fpm restart
 ```
+
+## Revisi
+
+Dokumentasi
+![8](assets/8.png)
 
 # Soal 12: Setup PHP Worker (Galadriel, Celeborn, Oropher)
 
